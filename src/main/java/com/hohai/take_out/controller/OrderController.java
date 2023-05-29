@@ -55,10 +55,4 @@ public class OrderController {
         orderDtoPage.setRecords(orderDtoList);
         return R.success(orderDtoPage);
     }
-    @DeleteMapping("/delete/{id}")
-    public R<String> delete(@PathVariable("id") Long id){
-        log.info("删除订单：id={}",id);
-        orderService.removeById(id);
-        return R.success("删除成功");
-    }
 }

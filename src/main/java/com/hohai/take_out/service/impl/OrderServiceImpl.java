@@ -2,10 +2,10 @@ package com.hohai.take_out.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hohai.take_out.common.BaseContext;
 import com.hohai.take_out.common.CustomException;
+import com.hohai.take_out.component.CancelOrderSender;
 import com.hohai.take_out.entity.*;
 import com.hohai.take_out.mapper.OrderMapper;
 import com.hohai.take_out.service.*;
@@ -19,6 +19,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+
+import org.springframework.amqp.core.AmqpTemplate;
+
 
 @Service
 @Slf4j
@@ -36,8 +39,15 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Orders> implement
     @Autowired
     private OrderDetailService orderDetailService;
 
+    @Autowired
+    private AmqpTemplate amqpTemplate;
+
+    @Autowired
+    private CancelOrderSender cancelOrderSender;
+
     /**
      * 用户下单
+     *
      * @param orders
      */
     @Transactional
@@ -45,7 +55,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Orders> implement
         Long userId = BaseContext.getCurrentId();
 
         LambdaQueryWrapper<ShoppingCart> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ShoppingCart::getUserId,userId);
+        wrapper.eq(ShoppingCart::getUserId, userId);
         List<ShoppingCart> shoppingCarts = shoppingCartService.list(wrapper);
 
         if(shoppingCarts == null || shoppingCarts.size() == 0){
@@ -94,8 +104,20 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Orders> implement
                 + (addressBook.getDistrictName() == null ? "" : addressBook.getDistrictName())
                 + (addressBook.getDetail() == null ? "" : addressBook.getDetail()));
         this.save(orders);
+        cancelOrderSender.sendMessage(orderId, 1000 * 60 * 3);//30分钟后自动取消订单
 
         orderDetailService.saveBatch(orderDetails);
         shoppingCartService.remove(wrapper);
+    }
+
+    public void cancelOrder(Long orderId) {
+        Orders orders = this.getById(orderId);
+        if (orders == null) {
+            throw new CustomException("订单不存在");
+        }
+        if (orders.getStatus() != 2) {
+            throw new CustomException("订单状态不正确");
+        }
+        this.removeById(orderId);
     }
 }

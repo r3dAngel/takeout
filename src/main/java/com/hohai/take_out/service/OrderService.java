@@ -7,4 +7,7 @@ import java.util.List;
 
 public interface OrderService extends IService<Orders> {
     public void submit(Orders orders);
+
+    public void cancelOrder(Long id);
+
 }
